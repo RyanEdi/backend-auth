@@ -28,6 +28,12 @@ app.use((req, res, next) => {
 
 
 // Endpoint de teste para garantir que o Express está funcionando
+
+// Rota GET / para resposta padrão
+app.get('/', (req, res) => {
+  res.json({ message: 'Auth service online' });
+});
+
 app.post('/test', (req, res) => {
   console.log('POST /test recebido');
   res.json({ ok: true });

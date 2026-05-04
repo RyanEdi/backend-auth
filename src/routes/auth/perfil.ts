@@ -194,4 +194,46 @@ router.post('/alterar-senha', async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /perfil - Atualiza dados editáveis do perfil
+router.patch('/perfil', async (req: Request, res: Response) => {
+  const usuarioId = (req.session as any)?.usuarioId;
+  if (!usuarioId) {
+    return res.status(401).json({ error: 'Sessão expirada. Faça login novamente.' });
+  }
+
+  const nomeCompleto = sanitizeText(req.body.nome_completo ?? '');
+  const numeroOab = sanitizeText(req.body.numero_oab ?? '');
+  const estadoOab = sanitizeText(req.body.estado_oab ?? '');
+  const telefone = sanitizeText(req.body.telefone ?? '');
+
+  if (!nomeCompleto) {
+    return res.status(400).json({ error: 'Nome completo é obrigatório.' });
+  }
+
+  try {
+    const hasTelefone = await hasUsuariosColumn('telefone');
+
+    const query = hasTelefone
+      ? `UPDATE usuarios_adv
+         SET nome_completo = $1, numero_oab = $2, estado_oab = $3,
+             telefone = $4, updated_at = CURRENT_TIMESTAMP
+         WHERE id = $5`
+      : `UPDATE usuarios_adv
+         SET nome_completo = $1, numero_oab = $2, estado_oab = $3,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $4`;
+
+    const params = hasTelefone
+      ? [nomeCompleto, numeroOab || null, estadoOab || null, telefone || null, usuarioId]
+      : [nomeCompleto, numeroOab || null, estadoOab || null, usuarioId];
+
+    await pool.query(query, params);
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Erro ao atualizar perfil:', err);
+    return res.status(500).json({ error: 'Erro ao atualizar perfil.' });
+  }
+});
+
 export default router;
