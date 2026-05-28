@@ -68,13 +68,14 @@ router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Resp
 
     // Gerar código de verificação (expira em 15 minutos)
     const verificationCode = generateVerificationCode();
+    const verificationCodeHash = await bcrypt.hash(verificationCode, SALT_ROUNDS);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
 
     const result = await pool.query(
       `INSERT INTO usuarios_adv (nome_completo, email_encrypted, email_hash, senha, data_nascimento, cpf, numero_oab, estado_oab, foto_oab, foto_oab_tipo, email_verified, email_verification_code, email_verification_expires)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12)
        RETURNING id`,
-      [nome_completo, emailEncrypted, emailHash, senhaHash, data_nascimento, cpfHash, numero_oab, estado_oab, foto_oab_buffer, foto_oab_tipo, verificationCode, expiresAt]
+      [nome_completo, emailEncrypted, emailHash, senhaHash, data_nascimento, cpfHash, numero_oab, estado_oab, foto_oab_buffer, foto_oab_tipo, verificationCodeHash, expiresAt]
     );
 
     // Enviar código de verificação por email
@@ -139,7 +140,8 @@ router.post('/verificar-email', async (req: Request, res: Response) => {
     }
 
     // Verificar se o código está correto
-    if (usuario.email_verification_code !== code.trim()) {
+    const codeValid = await bcrypt.compare(code.trim(), usuario.email_verification_code);
+    if (!codeValid) {
       return res.status(400).json({ success: false, message: 'Código inválido.' });
     }
 
@@ -189,11 +191,12 @@ router.post('/reenviar-codigo', async (req: Request, res: Response) => {
 
     // Gerar novo código
     const verificationCode = generateVerificationCode();
+    const verificationCodeHash = await bcrypt.hash(verificationCode, SALT_ROUNDS);
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await pool.query(
       'UPDATE usuarios_adv SET email_verification_code = $1, email_verification_expires = $2 WHERE id = $3',
-      [verificationCode, expiresAt, id]
+      [verificationCodeHash, expiresAt, id]
     );
 
     const { decryptEmail } = await import('../../utils/sanitizers');

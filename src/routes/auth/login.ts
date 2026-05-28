@@ -5,7 +5,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import pool from '../../config/database';
 import { ADMIN_CPFS } from '../../config/constants';
-import { onlyDigits, sanitizeText, hashCpf } from '../../utils/sanitizers';
+import { onlyDigits, sanitizeText, hashCpf, decryptEmail } from '../../utils/sanitizers';
 
 const router = Router();
 
@@ -101,15 +101,19 @@ router.get('/logout', (req: Request, res: Response) => {
 router.get('/status', (req: Request, res: Response) => {
   if (req.session.usuarioId) {
     pool
-      .query('SELECT nome_completo FROM usuarios_adv WHERE id = $1 LIMIT 1', [
+      .query('SELECT nome_completo, email_encrypted FROM usuarios_adv WHERE id = $1 LIMIT 1', [
         req.session.usuarioId,
       ])
       .then(resultado => {
+        const row = resultado.rows[0];
+        let email = '';
+        try { email = row?.email_encrypted ? decryptEmail(row.email_encrypted) : ''; } catch { email = ''; }
         res.json({
           logged: true,
           usuarioId: req.session.usuarioId,
           isAdmin: Boolean(req.session.isAdmin),
-          nomeCompleto: resultado.rows[0]?.nome_completo || '',
+          nomeCompleto: row?.nome_completo || '',
+          email,
         });
       })
       .catch(err => {
@@ -119,6 +123,7 @@ router.get('/status', (req: Request, res: Response) => {
           usuarioId: req.session.usuarioId,
           isAdmin: Boolean(req.session.isAdmin),
           nomeCompleto: '',
+          email: '',
         });
       });
   } else {

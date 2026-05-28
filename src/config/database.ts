@@ -187,8 +187,14 @@ export async function runMigrations(): Promise<void> {
     // Migração 5: Verificação de email por código
     await pool.query(`
       ALTER TABLE usuarios_adv ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
-      ALTER TABLE usuarios_adv ADD COLUMN IF NOT EXISTS email_verification_code VARCHAR(6);
+      ALTER TABLE usuarios_adv ADD COLUMN IF NOT EXISTS email_verification_code VARCHAR(72);
       ALTER TABLE usuarios_adv ADD COLUMN IF NOT EXISTS email_verification_expires TIMESTAMP;
+    `);
+
+    // Migração 7: Ampliar coluna para hash bcrypt do código de verificação
+    await pool.query(`
+      ALTER TABLE usuarios_adv
+        ALTER COLUMN email_verification_code TYPE VARCHAR(72);
     `);
 
     // Migração 6: Campos de perfil do usuário
