@@ -158,6 +158,7 @@ router.post('/verificar-email', async (req: Request, res: Response) => {
     const email = decryptEmail(usuario.email_encrypted);
     sendPendingAnalysisEmail(email, usuario.nome_completo).catch(err =>
         logger.error('Erro ao enviar email de pendente de análise', { error: (err as Error).message })
+    );
 
     return res.status(200).json({ success: true, redirectTo: `/pagamento?id=${id}` });
   } catch (err) {
@@ -204,6 +205,7 @@ router.post('/reenviar-codigo', async (req: Request, res: Response) => {
     const email = decryptEmail(usuario.email_encrypted);
     sendEmailVerificationCode(email, usuario.nome_completo, verificationCode).catch(err =>
         logger.error('Erro ao reenviar código de verificação', { error: (err as Error).message })
+    );
 
     return res.status(200).json({ success: true, message: 'Novo código enviado com sucesso.' });
   } catch (err) {
