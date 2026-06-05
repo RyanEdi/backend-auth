@@ -38,7 +38,7 @@ router.post('/payment/webhook/asaas', async (req: Request, res: Response) => {
   ).toLowerCase();
 
   const where: string[] = [];
-  const values: Array<string | number> = [];
+  const values: Array<string | number | null> = [];
 
   // A conciliacao tenta, nesta ordem, id interno, referencia do pagamento e email do pagador.
   const parsedUserId = Number(externalReference);

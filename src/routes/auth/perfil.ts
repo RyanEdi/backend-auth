@@ -7,6 +7,7 @@ import pool from '../../config/database';
 import { SALT_ROUNDS } from '../../config/constants';
 import { upload } from '../../middlewares/upload';
 import { sanitizeText, validatePassword, decryptEmail } from '../../utils/sanitizers';
+import logger from '../../utils/logger';
 
 const router = Router();
 
