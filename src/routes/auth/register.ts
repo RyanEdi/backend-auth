@@ -9,6 +9,7 @@ import { SALT_ROUNDS } from '../../config/constants';
 import { upload } from '../../middlewares/upload';
 import { onlyDigits, sanitizeText, validatePassword, hashCpf, hashEmail, encryptEmail, isValidEmail } from '../../utils/sanitizers';
 import { sendEmailVerificationCode, sendPendingAnalysisEmail } from '../../services/emailService';
+import logger from '../../utils/logger';
 
 // Gera código de 6 dígitos
 function generateVerificationCode(): string {
@@ -19,7 +20,7 @@ const router = Router();
 
 // POST /salvar - Cadastro de novo usuário com upload de foto OAB
 router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Response) => {
-  console.log('>>> POST /salvar recebido', { body: Object.keys(req.body), file: !!req.file });
+  logger.debug('POST /salvar recebido', { fields: Object.keys(req.body), hasFile: !!req.file });
   const nome_completo = sanitizeText(req.body.nome_completo);
   const email = sanitizeText(req.body.email).toLowerCase();
   const senha = sanitizeText(req.body.senha);
@@ -27,6 +28,7 @@ router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Resp
   const cpf = onlyDigits(req.body.cpf);
   const numero_oab = onlyDigits(req.body.numero_oab);
   const estado_oab = sanitizeText(req.body.estado_oab).toUpperCase();
+  const payment_reference = sanitizeText(req.body.payment_reference || '').slice(0, 120) || null;
 
   const foto_oab_buffer = req.file ? req.file.buffer : null;
   const foto_oab_tipo = req.file ? req.file.mimetype : null;
@@ -51,11 +53,11 @@ router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Resp
   }
 
   if (!numero_oab || !estado_oab) {
-    return res.status(400).send('Número e Estado da OAB são obrigatórios.');
+    // ambos opcionais — segue sem bloquear
   }
 
   if (!foto_oab_buffer) {
-    return res.status(400).send('Foto da carteira OAB é obrigatória.');
+    // foto opcional — segue sem bloquear
   }
 
   try {
@@ -72,16 +74,16 @@ router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Resp
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
 
     const result = await pool.query(
-      `INSERT INTO usuarios_adv (nome_completo, email_encrypted, email_hash, senha, data_nascimento, cpf, numero_oab, estado_oab, foto_oab, foto_oab_tipo, email_verified, email_verification_code, email_verification_expires)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12)
+      `INSERT INTO usuarios_adv (nome_completo, email_encrypted, email_hash, senha, data_nascimento, cpf, numero_oab, estado_oab, foto_oab, foto_oab_tipo, email_verified, email_verification_code, email_verification_expires, payment_status, payment_reference)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE, $11, $12, 'pending', $13)
        RETURNING id`,
-      [nome_completo, emailEncrypted, emailHash, senhaHash, data_nascimento, cpfHash, numero_oab, estado_oab, foto_oab_buffer, foto_oab_tipo, verificationCodeHash, expiresAt]
+      [nome_completo, emailEncrypted, emailHash, senhaHash, data_nascimento, cpfHash, numero_oab, estado_oab, foto_oab_buffer, foto_oab_tipo, verificationCodeHash, expiresAt, payment_reference]
     );
 
     // Enviar código de verificação por email
     // Enviar código de verificação por email (sem bloquear a resposta)
     sendEmailVerificationCode(email, nome_completo, verificationCode).catch(err =>
-      console.error('Erro ao enviar email de verificação:', err)
+      logger.error('Erro ao enviar email de verificação', { error: (err as Error).message })
     );
 
     // Retorna payload completo para o frontend decidir o redirecionamento
@@ -105,7 +107,7 @@ router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Resp
       }
       return res.status(409).send('Já existe usuário com estes dados.');
     }
-    console.error('Erro ao cadastrar:', err);
+    logger.error('Erro ao cadastrar', { code: err.code, message: err.message });
     res.status(400).send('Erro ao cadastrar: ' + err.message);
   }
 });
@@ -155,10 +157,9 @@ router.post('/verificar-email', async (req: Request, res: Response) => {
     const { decryptEmail } = await import('../../utils/sanitizers');
     const email = decryptEmail(usuario.email_encrypted);
     sendPendingAnalysisEmail(email, usuario.nome_completo).catch(err =>
-      console.error('Erro ao enviar email de pendente de análise:', err)
-    );
+        logger.error('Erro ao enviar email de pendente de análise', { error: (err as Error).message })
 
-    return res.status(200).json({ success: true, redirectTo: '/loginpage?email_verificado=true' });
+    return res.status(200).json({ success: true, redirectTo: `/pagamento?id=${id}` });
   } catch (err) {
     console.error('Erro ao verificar email:', err);
     return res.status(500).json({ success: false, message: 'Erro ao verificar e-mail. Tente novamente.' });
@@ -202,8 +203,7 @@ router.post('/reenviar-codigo', async (req: Request, res: Response) => {
     const { decryptEmail } = await import('../../utils/sanitizers');
     const email = decryptEmail(usuario.email_encrypted);
     sendEmailVerificationCode(email, usuario.nome_completo, verificationCode).catch(err =>
-      console.error('Erro ao reenviar código:', err)
-    );
+        logger.error('Erro ao reenviar código de verificação', { error: (err as Error).message })
 
     return res.status(200).json({ success: true, message: 'Novo código enviado com sucesso.' });
   } catch (err) {

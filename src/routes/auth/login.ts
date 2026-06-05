@@ -6,6 +6,7 @@ import bcrypt from 'bcrypt';
 import pool from '../../config/database';
 import { ADMIN_CPFS } from '../../config/constants';
 import { onlyDigits, sanitizeText, hashCpf, decryptEmail } from '../../utils/sanitizers';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 
   try {
-    // Busca por CPF (hashado ou plaintext legado) ou número OAB (plain)
+    // Mantem compatibilidade com base legada: CPF com hash, CPF em texto antigo ou numero OAB.
     const cpfHash = hashCpf(identificador);
     const resultado = await pool.query(
       'SELECT * FROM usuarios_adv WHERE cpf = $1 OR cpf = $2 OR numero_oab = $3',
@@ -43,25 +44,34 @@ router.post('/login', async (req: Request, res: Response) => {
     if (resultado.rows.length > 0) {
       const usuario = resultado.rows[0];
 
-      // Admins não precisam de verificação (compara hash dos CPFs admin)
+      // Administradores nao precisam de verificacao (compara hash dos CPFs de administracao)
       const isAdmin = ADMIN_CPFS.some(adminCpf => hashCpf(adminCpf) === usuario.cpf);
 
-      // Verifica se o email foi verificado (exceto para admins)
+      // O fluxo padrao e: verificar e-mail -> confirmar pagamento -> aprovar administrativamente -> liberar login.
       if (!isAdmin && !usuario.email_verified) {
         return res.status(403).json({ success: false, action: 'verify-email', userId: usuario.id });
       }
 
-      // Verifica se a conta foi aprovada pelo admin (exceto para admins)
+      // Administradores continuam com excecao para nao bloquear a operacao do sistema.
+      if (!isAdmin && usuario.payment_status !== 'paid') {
+        return res.status(403).json({
+          success: false,
+          action: 'pending-payment',
+          message: 'Pagamento pendente. O acesso sera liberado apos a confirmacao do pagamento.',
+        });
+      }
+
+      // Verifica se a conta foi aprovada por administracao (exceto para administradores)
       if (!isAdmin && !usuario.verificado) {
         return res.status(403).json({ success: false, message: 'Sua conta está pendente de aprovação por um administrador.' });
       }
 
-      // Verifica se a conta está ativa (exceto para admins)
+      // Verifica se a conta esta ativa (exceto para administradores)
       if (!isAdmin && usuario.ativo === false) {
         return res.status(403).json({ success: false, message: 'Sua conta foi desativada.' });
       }
 
-      // Verificar senha com bcrypt
+      // A senha e a ultima validacao; regras de negocio ja foram verificadas acima.
       const senhaValida = await bcrypt.compare(senha, usuario.senha);
 
       if (senhaValida) {
@@ -82,7 +92,7 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
     }
   } catch (err) {
-    console.error('Erro no login:', err);
+    logger.error('Erro no login', { error: (err as Error).message });
     return res.status(500).json({ success: false, message: 'Erro interno no servidor.' });
   }
 });
@@ -90,9 +100,7 @@ router.post('/login', async (req: Request, res: Response) => {
 // GET /logout - Logout do usuário
 router.get('/logout', (req: Request, res: Response) => {
   req.session.destroy(err => {
-    if (err) {
-      console.error('Erro ao destruir sessão:', err);
-    }
+    if (err) logger.error('Erro ao destruir sessão', { error: (err as Error).message });
     res.redirect('/loginpage');
   });
 });
@@ -117,7 +125,7 @@ router.get('/status', (req: Request, res: Response) => {
         });
       })
       .catch(err => {
-        console.error('Erro ao buscar dados da sessao:', err);
+        logger.error('Erro ao buscar dados da sessão', { error: (err as Error).message });
         res.json({
           logged: true,
           usuarioId: req.session.usuarioId,

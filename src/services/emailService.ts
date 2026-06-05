@@ -1,4 +1,6 @@
+import logger from '../utils/logger';
 import nodemailer from 'nodemailer';
+import pool from '../config/database';
 import {
   getApprovalEmailTemplate,
   getRejectionEmailTemplate,
@@ -27,10 +29,13 @@ interface EmailOptions {
   subject: string;
   html: string;
   text: string;
+  templateName?: string;
+  metadata?: Record<string, unknown>;
 }
 
 interface EmailJob extends EmailOptions {
   attempts: number;
+  logId: number | null;
 }
 
 const MAX_EMAIL_RETRIES = Math.max(1, Number(process.env.EMAIL_MAX_RETRIES || '3'));
@@ -39,6 +44,55 @@ const emailQueue: EmailJob[] = [];
 let isProcessingQueue = false;
 
 const wait = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+async function createEmailLog(options: EmailOptions, status: string, attempts = 0, errorMessage?: string | null): Promise<number | null> {
+  try {
+    const result = await pool.query(
+      `INSERT INTO email_delivery_logs (
+        recipient_email, subject, template_name, status, attempts, error_message, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+      RETURNING id`,
+      [
+        options.to,
+        options.subject,
+        options.templateName || options.subject,
+        status,
+        attempts,
+        errorMessage || null,
+        JSON.stringify(options.metadata || {}),
+      ]
+    );
+
+    return result.rows[0]?.id ?? null;
+  } catch (error) {
+    logger.error('Erro ao criar log de email', { error: (error as Error).message });
+    return null;
+  }
+}
+
+async function updateEmailLog(
+  logId: number | null,
+  status: string,
+  attempts: number,
+  errorMessage?: string | null
+): Promise<void> {
+  if (!logId) return;
+
+  try {
+    await pool.query(
+      `UPDATE email_delivery_logs
+       SET status = $2,
+           attempts = $3,
+           error_message = $4,
+           sent_at = CASE WHEN $2 = 'sent' THEN NOW() ELSE sent_at END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [logId, status, attempts, errorMessage || null]
+    );
+  } catch (error) {
+    logger.error('Erro ao atualizar log de email', { error: (error as Error).message });
+  }
+}
 
 async function dispatchEmail(options: EmailOptions): Promise<void> {
   await transporter.sendMail({
@@ -66,14 +120,17 @@ async function processEmailQueue(): Promise<void> {
       try {
         await dispatchEmail(job);
         console.log(`✅ Email enviado para: ${job.to}`);
+        await updateEmailLog(job.logId, 'sent', job.attempts);
       } catch (error) {
         const nextAttempt = job.attempts + 1;
         if (nextAttempt < MAX_EMAIL_RETRIES) {
+          await updateEmailLog(job.logId, 'queued', nextAttempt, error instanceof Error ? error.message : 'Erro desconhecido');
           emailQueue.push({ ...job, attempts: nextAttempt });
           console.warn(`⚠️ Falha no envio para ${job.to}. Tentativa ${nextAttempt + 1}/${MAX_EMAIL_RETRIES}.`);
           await wait(EMAIL_RETRY_DELAY_MS * nextAttempt);
         } else {
           console.error(`❌ Falha definitiva ao enviar email para: ${job.to}`, error);
+          await updateEmailLog(job.logId, 'failed', nextAttempt, error instanceof Error ? error.message : 'Erro desconhecido');
         }
       }
     }
@@ -89,10 +146,12 @@ async function sendEmail(options: EmailOptions): Promise<boolean> {
     console.log(`📧 Para: ${options.to}`);
     console.log(`📝 Assunto: ${options.subject}`);
     console.log(`📄 Corpo: ${options.text}`);
+    await createEmailLog(options, 'skipped_no_credentials');
     return false;
   }
 
-  emailQueue.push({ ...options, attempts: 0 });
+  const logId = await createEmailLog(options, 'queued');
+  emailQueue.push({ ...options, attempts: 0, logId });
   void processEmailQueue();
   return true;
 }

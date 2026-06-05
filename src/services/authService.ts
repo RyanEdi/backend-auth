@@ -7,36 +7,55 @@ import clientsRouter from '../routes/admin/clients';
 import consultaCepRouter from '../routes/consultaCep';
 import { createBaseApp } from '../shared/createBaseApp';
 import { resolvePort } from '../config/http';
-import { runMigrations } from '../config/database';
+import pool, { runMigrations } from '../config/database';
+import logger from '../utils/logger';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+const auditLogger = async (entry: {
+  serviceName: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  userId?: number | null;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: Record<string, unknown>;
+}) => {
+  try {
+    await pool.query(
+      `INSERT INTO system_audit_logs (
+        service_name, method, path, status_code, duration_ms, user_id, ip_address, user_agent, metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+      [
+        entry.serviceName,
+        entry.method,
+        entry.path,
+        entry.statusCode,
+        entry.durationMs,
+        entry.userId ?? null,
+        entry.ipAddress ?? null,
+        entry.userAgent ?? null,
+        JSON.stringify(entry.metadata ?? {}),
+      ]
+    );
+  } catch (error) {
+    logger.error('Erro ao salvar log de auditoria', { error: (error as Error).message });
+  }
+};
 
-const app = createBaseApp({ withSession: true });
-
-// Log global para todos os requests
-app.use((req, res, next) => {
-  console.log('[AUTH-SERVICE] Recebido:', req.method, req.url);
-  next();
+const app = createBaseApp({
+  withSession: true,
+  serviceName: 'auth-service',
+  auditLogger,
 });
 
-// Log global para todos os requests
-app.use((req, res, next) => {
-  console.log('[AUTH-SERVICE] Recebido:', req.method, req.url);
-  next();
-});
 
 
-
-// Endpoint de teste para garantir que o Express está funcionando
+// Rota de teste para garantir que o Express esta funcionando
 
 // Rota GET / para resposta padrão
 app.get('/', (req, res) => {
   res.json({ message: 'Auth service online' });
-});
-
-app.post('/test', (req, res) => {
-  console.log('POST /test recebido');
-  res.json({ ok: true });
 });
 
 app.use('/', authRouter);
@@ -58,7 +77,7 @@ app.use((err: any, _req: any, res: any, _next: any) => {
     return res.status(400).json({ success: false, message: 'JSON invalido na requisicao.' });
   }
 
-  console.error('Erro nao tratado:', err);
+  logger.error('Erro nao tratado', { error: (err as Error)?.message ?? String(err) });
   return res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
 });
 
@@ -67,7 +86,7 @@ const PORT = resolvePort('AUTH_SERVICE_PORT', 3334);
 if (require.main === module) {
   runMigrations().then(() => {
     app.listen(PORT, () => {
-      console.log(`Auth service running on port ${PORT}`);
+      logger.info(`Auth service running on port ${PORT}`);
     });
   });
 }

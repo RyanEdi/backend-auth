@@ -63,7 +63,7 @@ router.get('/perfil', async (req: Request, res: Response) => {
       foto_url: u.tem_foto ? `/api/auth/foto-perfil/${usuarioId}` : null,
     });
   } catch (err) {
-    console.error('Erro ao buscar perfil:', err);
+    logger.error('Erro ao buscar perfil:', { error: (err as Error).message });
     return res.status(500).json({ error: 'Erro ao buscar perfil.' });
   }
 });
@@ -95,7 +95,7 @@ router.get('/foto-perfil/:id', async (req: Request, res: Response) => {
     res.set('Cache-Control', 'public, max-age=86400');
     return res.send(foto_perfil);
   } catch (err) {
-    console.error('Erro ao buscar foto de perfil:', err);
+    logger.error('Erro ao buscar foto de perfil:', { error: (err as Error).message });
     return res.status(500).send('Erro ao buscar imagem.');
   }
 });
@@ -142,7 +142,7 @@ router.post('/perfil/foto', upload.single('foto'), async (req: Request, res: Res
       foto_url: `/api/auth/foto-perfil/${usuarioId}`,
     });
   } catch (err) {
-    console.error('Erro ao salvar foto de perfil:', err);
+    logger.error('Erro ao salvar foto de perfil:', { error: (err as Error).message });
     return res.status(500).json({ error: 'Erro ao salvar foto.' });
   }
 });
@@ -189,7 +189,7 @@ router.post('/alterar-senha', async (req: Request, res: Response) => {
 
     return res.json({ success: true, message: 'Senha alterada com sucesso.' });
   } catch (err) {
-    console.error('Erro ao alterar senha:', err);
+    logger.error('Erro ao alterar senha:', { error: (err as Error).message });
     return res.status(500).json({ error: 'Erro ao alterar senha.' });
   }
 });
@@ -231,9 +231,10 @@ router.patch('/perfil', async (req: Request, res: Response) => {
 
     return res.json({ success: true });
   } catch (err) {
-    console.error('Erro ao atualizar perfil:', err);
+    logger.error('Erro ao atualizar perfil:', { error: (err as Error).message });
     return res.status(500).json({ error: 'Erro ao atualizar perfil.' });
   }
 });
 
 export default router;
+

@@ -3,6 +3,7 @@
  */
 import { Router, Request, Response } from 'express';
 import pool from '../../config/database';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -31,7 +32,7 @@ router.get('/foto-oab/:id', async (req: Request, res: Response) => {
     res.set('Cache-Control', 'public, max-age=86400'); // Cache de 1 dia
     res.send(foto_oab);
   } catch (err) {
-    console.error('Erro ao buscar foto:', err);
+    logger.error('Erro ao buscar foto OAB', { error: (err as Error).message });
     res.status(500).send('Erro ao buscar imagem.');
   }
 });

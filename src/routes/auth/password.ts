@@ -7,6 +7,7 @@ import pool from '../../config/database';
 import { SALT_ROUNDS } from '../../config/constants';
 import { onlyDigits, sanitizeText, validatePassword, hashCpf, decryptEmail } from '../../utils/sanitizers';
 import { sendPasswordChangedEmail } from '../../services/emailService';
+import logger from '../../utils/logger';
 
 const router = Router();
 
@@ -62,14 +63,11 @@ router.post('/atualizar-senha', async (req: Request, res: Response) => {
       sendPasswordChangedEmail(email, nome_completo)
         .then((sent) => {
           if (!sent) {
-            console.warn('⚠️ Email de alteração de senha não foi enviado (retorno false).', {
-              email,
-              cpf
-            });
+            logger.warn('Email de alteração de senha não foi enviado', { cpf });
           }
         })
         .catch((err) => {
-          console.error('Erro ao enviar email de alteração de senha:', err);
+          logger.error('Erro ao enviar email de alteração de senha', { error: (err as Error).message });
         });
 
       return res.status(200).json({ success: true, message: 'Senha atualizada com sucesso!' });
@@ -77,7 +75,7 @@ router.post('/atualizar-senha', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Usuário não encontrado.' });
     }
   } catch (err) {
-    console.error('Erro ao atualizar senha:', err);
+    logger.error('Erro ao atualizar senha', { error: (err as Error).message });
     return res.status(500).json({ error: 'Erro ao processar a atualização.' });
   }
 });

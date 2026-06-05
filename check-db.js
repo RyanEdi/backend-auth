@@ -29,7 +29,7 @@ async function run() {
       process.exit(1);
     }
 
-    // Buscar usuarios com email plain mas sem email_encrypted
+    // Buscar usuarios com e-mail em texto simples e sem email_encrypted
     const result = await p.query(
       "SELECT id, email FROM usuarios_adv WHERE email IS NOT NULL AND email != '' AND (email_encrypted IS NULL OR email_encrypted = '')"
     );

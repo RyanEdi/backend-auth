@@ -2,6 +2,7 @@
  * Middlewares de autenticação/autorização
  */
 import { Request, Response, NextFunction } from 'express';
+import logger from '../utils/logger';
 
 const getUserId = (req: Request): number | null => {
   const sessionUserId = req.session?.usuarioId;
@@ -43,19 +44,17 @@ export const requireAdmin = (
   res: Response,
   next: NextFunction
 ) => {
-    console.log('[requireAdmin] Checando admin');
     const userId = getUserId(req);
     if (!userId) {
-      console.log('[requireAdmin] Falha: Não autenticado');
+      logger.warn('requireAdmin: acesso negado — não autenticado', { ip: req.ip });
       return res.status(401).json({ error: 'Não autenticado.' });
     }
 
     const isAdmin = isAdminRequest(req);
     if (!isAdmin) {
-      console.log('[requireAdmin] Falha: Acesso negado para userId', userId);
+      logger.warn('requireAdmin: acesso negado — não é admin', { userId, ip: req.ip });
       return res.status(403).json({ error: 'Acesso negado.' });
     }
 
-    console.log('[requireAdmin] Usuário autenticado e admin:', userId);
   return next();
 };
