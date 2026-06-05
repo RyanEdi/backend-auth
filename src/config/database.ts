@@ -30,6 +30,36 @@ export async function runMigrations(): Promise<void> {
   try {
     logger.info('Executando migrações do banco de dados');
 
+    // Migração 0: garantir tabela base antes de executar ALTER TABLE usuarios_adv.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS usuarios_adv (
+        id SERIAL PRIMARY KEY,
+        nome_completo VARCHAR(200) NOT NULL,
+        email_encrypted TEXT,
+        email_hash VARCHAR(255),
+        senha VARCHAR(255) NOT NULL,
+        data_nascimento TEXT,
+        cpf VARCHAR(255) NOT NULL,
+        numero_oab VARCHAR(50),
+        estado_oab VARCHAR(10),
+        foto_oab BYTEA,
+        foto_oab_tipo VARCHAR(50),
+        verificado BOOLEAN NOT NULL DEFAULT FALSE,
+        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_adv_cpf_unique
+        ON usuarios_adv(cpf);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_adv_email_hash_unique
+        ON usuarios_adv(email_hash)
+        WHERE email_hash IS NOT NULL;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_adv_numero_oab_unique
+        ON usuarios_adv(numero_oab)
+        WHERE numero_oab IS NOT NULL;
+    `);
+
     // Migração 1: Adicionar coluna 'ativo' se não existir
     await pool.query(`
       DO $$
@@ -457,7 +487,24 @@ export async function runMigrations(): Promise<void> {
 
     logger.info('Migrações executadas com sucesso');
   } catch (error) {
-    logger.error('Erro ao executar migrações', { error: (error as Error).message });
+    const pgError = error as Error & {
+      code?: string;
+      detail?: string;
+      hint?: string;
+      where?: string;
+      table?: string;
+      column?: string;
+    };
+
+    logger.error('Erro ao executar migrações', {
+      message: pgError.message,
+      code: pgError.code,
+      detail: pgError.detail,
+      hint: pgError.hint,
+      table: pgError.table,
+      column: pgError.column,
+      where: pgError.where,
+    });
     // Não lança erro para não impedir o servidor de iniciar
   }
 }
