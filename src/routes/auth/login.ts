@@ -35,11 +35,28 @@ router.post('/login', async (req: Request, res: Response) => {
 
   try {
     // Mantem compatibilidade com base legada: CPF com hash, CPF em texto antigo ou numero OAB.
-    const cpfHash = hashCpf(identificador);
-    const resultado = await pool.query(
-      'SELECT * FROM usuarios_adv WHERE cpf = $1 OR cpf = $2 OR numero_oab = $3',
-      [cpfHash, identificador, identificador]
-    );
+    let cpfHash: string;
+    try {
+      cpfHash = hashCpf(identificador);
+    } catch (hashErr) {
+      logger.error('Erro ao gerar hash do CPF', { error: (hashErr as Error).message });
+      throw hashErr;
+    }
+
+    let resultado: any;
+    try {
+      resultado = await pool.query(
+        'SELECT * FROM usuarios_adv WHERE cpf = $1 OR cpf = $2 OR numero_oab = $3',
+        [cpfHash, identificador, identificador]
+      );
+    } catch (queryErr) {
+      logger.error('Erro na query do banco de dados', {
+        error: (queryErr as Error).message,
+        code: (queryErr as any).code,
+        detail: (queryErr as any).detail,
+      });
+      throw queryErr;
+    }
 
     if (resultado.rows.length > 0) {
       const usuario = resultado.rows[0];
@@ -72,7 +89,13 @@ router.post('/login', async (req: Request, res: Response) => {
       }
 
       // A senha e a ultima validacao; regras de negocio ja foram verificadas acima.
-      const senhaValida = await bcrypt.compare(senha, usuario.senha);
+      let senhaValida: boolean;
+      try {
+        senhaValida = await bcrypt.compare(senha, usuario.senha);
+      } catch (bcryptErr) {
+        logger.error('Erro ao comparar senha com bcrypt', { error: (bcryptErr as Error).message });
+        throw bcryptErr;
+      }
 
       if (senhaValida) {
         req.session.usuarioId = usuario.id;
@@ -93,7 +116,10 @@ router.post('/login', async (req: Request, res: Response) => {
     }
   } catch (err) {
     const errorMessage = (err as Error)?.message || 'Erro interno no servidor.';
-    logger.error('Erro no login', { error: errorMessage });
+    logger.error('Erro no login', {
+      error: errorMessage,
+      stack: (err as Error)?.stack,
+    });
     return res.status(500).json({
       success: false,
       message:

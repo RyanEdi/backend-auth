@@ -64,11 +64,37 @@ if (missingEnvVars.length > 0) {
   });
 }
 
+// Log de verificação de variáveis após carregamento
+logger.info('Variáveis de ambiente carregadas', {
+  has_SESSION_SECRET: !!process.env.SESSION_SECRET,
+  has_CPF_SECRET: !!process.env.CPF_SECRET,
+  has_EMAIL_SECRET: !!process.env.EMAIL_SECRET,
+  DB_HOST: process.env.DB_HOST,
+  NODE_ENV: process.env.NODE_ENV,
+});
+
 // Rota de teste para garantir que o Express esta funcionando
 
 // Rota GET / para resposta padrão
 app.get('/', (req, res) => {
   res.json({ message: 'Auth service online' });
+});
+
+// Debug endpoint (remover em produção)
+app.get('/debug/env', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Not available in production' });
+  }
+  res.json({
+    SESSION_SECRET: !!process.env.SESSION_SECRET ? '***' : 'MISSING',
+    CPF_SECRET: !!process.env.CPF_SECRET ? `${process.env.CPF_SECRET.length} chars` : 'MISSING',
+    EMAIL_SECRET: !!process.env.EMAIL_SECRET ? `${process.env.EMAIL_SECRET.length} chars` : 'MISSING',
+    DB_HOST: process.env.DB_HOST || 'MISSING',
+    DB_PORT: process.env.DB_PORT || 'MISSING',
+    DB_USER: process.env.DB_USER || 'MISSING',
+    DB_NAME: process.env.DB_NAME || 'MISSING',
+    NODE_ENV: process.env.NODE_ENV || 'development',
+  });
 });
 
 app.use('/', authRouter);
