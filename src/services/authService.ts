@@ -22,6 +22,11 @@ const auditLogger = async (entry: {
   userAgent?: string;
   metadata?: Record<string, unknown>;
 }) => {
+  // Desabilitar audit logs se variável estiver setada
+  if (process.env.DISABLE_AUDIT_LOGS === '1') {
+    return;
+  }
+
   try {
     await pool.query(
       `INSERT INTO system_audit_logs (
