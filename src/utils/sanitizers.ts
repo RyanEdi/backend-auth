@@ -2,26 +2,21 @@
  * Funções de sanitização e validação
  */
 import crypto from 'crypto';
+import { CPF_SECRET, EMAIL_SECRET } from '../config/constants';
 
 // HMAC-SHA256 para CPF (determinístico, permite busca por igualdade)
 export const hashCpf = (cpf: string): string => {
-  const secret = process.env.CPF_SECRET;
-  if (!secret) throw new Error('CPF_SECRET não definido no .env');
-  return crypto.createHmac('sha256', secret).update(cpf).digest('hex');
+  return crypto.createHmac('sha256', CPF_SECRET).update(cpf).digest('hex');
 };
 
 // HMAC-SHA256 para email (determinístico, permite busca/unicidade)
 export const hashEmail = (email: string): string => {
-  const secret = process.env.EMAIL_SECRET;
-  if (!secret) throw new Error('EMAIL_SECRET não definido no .env');
-  return crypto.createHmac('sha256', secret).update(email.toLowerCase()).digest('hex');
+  return crypto.createHmac('sha256', EMAIL_SECRET).update(email.toLowerCase()).digest('hex');
 };
 
 // AES-256-CBC para criptografar email (reversível)
 export const encryptEmail = (email: string): string => {
-  const secret = process.env.EMAIL_SECRET;
-  if (!secret) throw new Error('EMAIL_SECRET não definido no .env');
-  const key = crypto.createHash('sha256').update(secret).digest();
+  const key = crypto.createHash('sha256').update(EMAIL_SECRET).digest();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
   let encrypted = cipher.update(email.toLowerCase(), 'utf8', 'hex');
@@ -31,9 +26,7 @@ export const encryptEmail = (email: string): string => {
 
 // AES-256-CBC para descriptografar email
 export const decryptEmail = (encryptedEmail: string): string => {
-  const secret = process.env.EMAIL_SECRET;
-  if (!secret) throw new Error('EMAIL_SECRET não definido no .env');
-  const key = crypto.createHash('sha256').update(secret).digest();
+  const key = crypto.createHash('sha256').update(EMAIL_SECRET).digest();
   const [ivHex, encrypted] = encryptedEmail.split(':');
   const iv = Buffer.from(ivHex, 'hex');
   const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);

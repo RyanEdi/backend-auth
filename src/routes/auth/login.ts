@@ -92,8 +92,15 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Usuário não encontrado.' });
     }
   } catch (err) {
-    logger.error('Erro no login', { error: (err as Error).message });
-    return res.status(500).json({ success: false, message: 'Erro interno no servidor.' });
+    const errorMessage = (err as Error)?.message || 'Erro interno no servidor.';
+    logger.error('Erro no login', { error: errorMessage });
+    return res.status(500).json({
+      success: false,
+      message:
+        process.env.NODE_ENV === 'production'
+          ? 'Erro interno no servidor.'
+          : `Erro interno no servidor: ${errorMessage}`,
+    });
   }
 });
 

@@ -49,7 +49,13 @@ const app = createBaseApp({
   auditLogger,
 });
 
-
+const requiredEnvVars = ['SESSION_SECRET', 'CPF_SECRET', 'EMAIL_SECRET'];
+const missingEnvVars = requiredEnvVars.filter(name => !process.env[name]);
+if (missingEnvVars.length > 0) {
+  logger.error('Variáveis de ambiente obrigatórias ausentes', {
+    missing: missingEnvVars,
+  });
+}
 
 // Rota de teste para garantir que o Express esta funcionando
 

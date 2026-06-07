@@ -16,3 +16,6 @@ export const ADMIN_CPFS = (process.env.ADMIN_CPFS || '')
 
 // Secret para HMAC do CPF (definir no .env)
 export const CPF_SECRET = process.env.CPF_SECRET || 'cpf_secret_juridico';
+
+// Secret para criptografia de email (definir no .env)
+export const EMAIL_SECRET = process.env.EMAIL_SECRET || 'email_secret_juridico';
