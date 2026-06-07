@@ -1,6 +1,7 @@
 
 import dotenv from 'dotenv';
 import path from 'path';
+import { MulterError } from 'multer';
 import authRouter from '../routes/auth';
 import adminRouter from '../routes/admin';
 import clientsRouter from '../routes/admin/clients';
@@ -83,8 +84,23 @@ app.use((err: any, _req: any, res: any, _next: any) => {
     return res.status(400).json({ success: false, message: 'JSON invalido na requisicao.' });
   }
 
-  logger.error('Erro nao tratado', { error: (err as Error)?.message ?? String(err) });
-  return res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
+  if (err instanceof MulterError) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+
+  if (err?.message === 'Apenas imagens são permitidas') {
+    return res.status(400).json({ success: false, message: err.message });
+  }
+
+  const message = (err as Error)?.message || 'Erro interno do servidor.';
+  logger.error('Erro nao tratado', { error: message });
+  return res.status(500).json({
+    success: false,
+    message:
+      process.env.NODE_ENV === 'production'
+        ? 'Erro interno do servidor.'
+        : `Erro interno do servidor: ${message}`,
+  });
 });
 
 const PORT = resolvePort('AUTH_SERVICE_PORT', 3334);
