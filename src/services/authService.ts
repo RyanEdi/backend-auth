@@ -40,7 +40,13 @@ const auditLogger = async (entry: {
       ]
     );
   } catch (error) {
-    logger.error('Erro ao salvar log de auditoria', { error: (error as Error).message });
+    const err: any = error;
+    logger.error('Erro ao salvar log de auditoria', {
+      errorMessage: err?.message ?? String(err),
+      errorCode: err?.code,
+      stack: err?.stack,
+      raw: typeof err === 'object' ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : String(err),
+    });
   }
 };
 
@@ -76,31 +82,54 @@ app.get('/health', (_req, res) => {
 });
 
 app.use((err: any, _req: any, res: any, _next: any) => {
-  if (err?.type === 'request.aborted' || err?.name === 'BadRequestError') {
-    return res.status(400).json({ success: false, message: 'Requisicao abortada pelo cliente.' });
-  }
+  try {
+    if (err?.type === 'request.aborted' || err?.name === 'BadRequestError') {
+      return res.status(400).json({ success: false, message: 'Requisicao abortada pelo cliente.' });
+    }
 
-  if (err?.type === 'entity.parse.failed') {
-    return res.status(400).json({ success: false, message: 'JSON invalido na requisicao.' });
-  }
+    if (err?.type === 'entity.parse.failed') {
+      return res.status(400).json({ success: false, message: 'JSON invalido na requisicao.' });
+    }
 
-  if (err instanceof MulterError) {
-    return res.status(400).json({ success: false, message: err.message });
-  }
+    if (err instanceof MulterError) {
+      return res.status(400).json({ success: false, message: err.message });
+    }
 
-  if (err?.message === 'Apenas imagens são permitidas') {
-    return res.status(400).json({ success: false, message: err.message });
-  }
+    if (err?.message === 'Apenas imagens são permitidas') {
+      return res.status(400).json({ success: false, message: err.message });
+    }
 
-  const message = (err as Error)?.message || 'Erro interno do servidor.';
-  logger.error('Erro nao tratado', { error: message });
-  return res.status(500).json({
-    success: false,
-    message:
-      process.env.NODE_ENV === 'production'
-        ? 'Erro interno do servidor.'
-        : `Erro interno do servidor: ${message}`,
-  });
+    const message = (err as Error)?.message || 'Erro interno do servidor.';
+
+    // Log detalhado para ajudar debug: rota, método, headers (limitado), body (pequeno), stack
+    try {
+      const req = _req as any;
+      const headers = req?.headers ? { origin: req.headers.origin, host: req.headers.host } : undefined;
+      const bodyPreview = req?.body ? JSON.stringify(req.body).slice(0, 200) : undefined;
+      logger.error('Erro nao tratado', {
+        error: message,
+        path: req?.originalUrl,
+        method: req?.method,
+        headers,
+        bodyPreview,
+        stack: (err as Error)?.stack,
+      });
+    } catch (logErr) {
+      logger.error('Falha ao montar log detalhado de erro', { error: (logErr as Error).message });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        process.env.NODE_ENV === 'production'
+          ? 'Erro interno do servidor.'
+          : `Erro interno do servidor: ${message}`,
+    });
+  } catch (outerErr) {
+    // Se o próprio handler falhar, garantimos retorno 500 simples e logamos
+    logger.error('Erro no error-handler', { error: (outerErr as Error).message });
+    return res.status(500).json({ success: false, message: 'Erro interno do servidor.' });
+  }
 });
 
 const PORT = resolvePort('AUTH_SERVICE_PORT', 3334);
