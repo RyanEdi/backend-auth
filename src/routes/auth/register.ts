@@ -26,8 +26,10 @@ router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Resp
   const senha = sanitizeText(req.body.senha);
   const data_nascimento = sanitizeText(req.body.data_nascimento);
   const cpf = onlyDigits(req.body.cpf);
-  const numero_oab = onlyDigits(req.body.numero_oab);
-  const estado_oab = sanitizeText(req.body.estado_oab).toUpperCase();
+  const oab_digits = onlyDigits(req.body.numero_oab);
+  const numero_oab = oab_digits && oab_digits.trim() !== "" ? oab_digits : null;
+  const estado_raw = sanitizeText(req.body.estado_oab);
+  const estado_oab = estado_raw && estado_raw.trim() !== "" ? estado_raw.toUpperCase() : null;
   const payment_reference = sanitizeText(req.body.payment_reference || '').slice(0, 120) || null;
 
   const foto_oab_buffer = req.file ? req.file.buffer : null;
@@ -81,7 +83,6 @@ router.post('/salvar', upload.single('foto_oab'), async (req: Request, res: Resp
     );
 
     // Enviar código de verificação por email
-    // Enviar código de verificação por email (sem bloquear a resposta)
     sendEmailVerificationCode(email, nome_completo, verificationCode).catch(err =>
       logger.error('Erro ao enviar email de verificação', { error: (err as Error).message })
     );
